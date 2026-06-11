@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>행운의 선물 뽑기</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: #f5f6fa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .control-panel {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            z-index: 10;
+        }
+
+        /* 배경음악 버튼 */
+        .bgm-btn {
+            padding: 10px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            background-color: #fff;
+            color: #2c3e50;
+            border: 2px solid #2c3e50;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .bgm-btn.active {
+            background-color: #ffbe76;
+            color: white;
+            border-color: #ffbe76;
+        }
+
+        /* 4행 5열 격자 배열 */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            max-width: 900px;
+            width: 100%;
+            perspective: 1000px;
+        }
+
+        /* 카드 스타일 */
+        .card {
+            height: 130px;
+            cursor: pointer;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .card.open {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+            padding: 10px;
+        }
+
+        /* 앞면 (번호) */
+        .card-front {
+            background: linear-gradient(135deg, #ff7675, #d63031);
+            color: white;
+            font-size: 2rem;
+            font-weight: bold;
+            border: 2px solid #ff7675;
+        }
+
+        /* 뒷면 (선물 이름) */
+        .card-back {
+            background: linear-gradient(135deg, #00cec9, #00b894);
+            color: white;
+            transform: rotateY(180deg);
+            font-size: 1.05rem;
+            font-weight: bold;
+            text-align: center;
+            word-break: keep-all;
+            line-height: 1.4;
+        }
+
+        /* 하단 버튼 */
+        .reset-btn {
+            margin-top: 35px;
+            padding: 15px 35px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .reset-btn:hover {
+            background-color: #1a252f;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎁 행운의 선물 뽑기 🎁</h1>
+    
+    <div class="control-panel">
+        <button id="bgmBtn" class="bgm-btn" onclick="toggleBGM()">🎵 경쾌한 예능 BGM 켜기</button>
+    </div>
+    
+    <div class="grid-container" id="cardGrid"></div>
+
+    <button class="reset-btn" onclick="resetGame()">🔄 다시 뽑기 화면으로 (초기화)</button>
+
+    <script>
+        // 요청하신 선물 리스트 (20개)
+        const gifts = [
+            "착즙기", "보온보냉병", "노트북(중고)", "보드게임\n(스플렌더)", "후라이팬",
+            "후라이팬1", "후라이팬2", "그릴(고급)", "바디샤워세트", "우산",
+            "핸드백", "차세트", "아웃도어바지M\n(네파)", "쿠쿠전기밥솥", "글럭마사지기",
+            "원목도마", "크로스백", "마사지건", "퀼트 컵받침\n8세트", "차세트"
+        ];
+
+        const cardGrid = document.getElementById('cardGrid');
+        const bgmBtn = document.getElementById('bgmBtn');
+        
+        let audioCtx = null;
+        let isBgmPlaying = false;
+        let playNextNoteTime = 0;
+        let melodyStep = 0;
+        let bgmAnimationFrame = null;
+
+        // 경쾌한 카니발 스타일 멜로디 주파수 배열
+        const melody = [
+            523, 659, 784, 659, 587, 698, 880, 698,
+            523, 659, 784, 1046, 987, 784, 698, 587
+        ];
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 단일 음 발생기 (가장 가볍고 안전한 오디오 노드 생성 구조)
+        function playTone(freq, startTime, duration, type = 'sine', vol = 0.1) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = type; 
+            osc.frequency.setValueAtTime(freq, startTime);
+            
+            gain.gain.setValueAtTime(vol, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        }
+
+        // 띠로리링~ 짠! 경쾌한 카드 오픈 효과음
+        function playFlipSound() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const now = audioCtx.currentTime;
+            playTone(523.25, now, 0.08, 'triangle', 0.2);       // 도
+            playTone(659.25, now + 0.05, 0.08, 'triangle', 0.2);  // 미
+            playTone(783.99, now + 0.10, 0.08, 'triangle', 0.2);  // 솔
+            playTone(1046.50, now + 0.15, 0.08, 'triangle', 0.2); // 높은 도
+            playTone(1318.51, now + 0.20, 0.3, 'sine', 0.25);     // 높은 미
+        }
+
+        // 브라우저 렉(Lag) 유발을 원천 차단하는 스케줄러 기반 BGM 시스템
+        function scheduler() {
+            while (playNextNoteTime < audioCtx.currentTime + 0.1) {
+                const currentMelody = melody[melodyStep % melody.length];
+                
+                // 메인 멜로디 연주
+                playTone(currentMelody, playNextNoteTime, 0.14, 'sine', 0.12);
+                
+                // 가벼운 반주 비트 연주
+                if (melodyStep % 2 === 0) {
+                    playTone(currentMelody / 2, playNextNoteTime, 0.08, 'triangle', 0.12);
+                }
+                
+                // 박자 간격 설정 (경쾌한 템포: 0.16초)
+                playNextNoteTime += 0.16;
+                melodyStep++;
+            }
+            if (isBgmPlaying) {
+                bgmAnimationFrame = requestAnimationFrame(scheduler);
+            }
+        }
+
+        function toggleBGM() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            if (isBgmPlaying) {
+                isBgmPlaying = false;
+                cancelAnimationFrame(bgmAnimationFrame);
+                bgmBtn.innerText = "🎵 경쾌한 예능 BGM 켜기";
+                bgmBtn.classList.remove('active');
+            } else {
+                isBgmPlaying = true;
+                playNextNoteTime = audioCtx.currentTime;
+                scheduler();
+                bgm
